@@ -51,7 +51,10 @@ _JP_FONT_CANDIDATES = [
     ("C:/Windows/Fonts/meiryob.ttc", 0),
     ("C:/Windows/Fonts/meiryo.ttc", 0),
     ("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", 0),
+    ("/usr/share/fonts/opentype/noto/NotoSansCJKjp-Bold.otf", 0),
     ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 0),
+    ("/usr/share/fonts/opentype/noto/NotoSansCJKjp-Regular.otf", 0),
+    ("/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc", 0),
     ("/System/Library/Fonts/Hiragino Sans GB.ttc", 0),
 ]
 _MONO_FONT_CANDIDATES = [
