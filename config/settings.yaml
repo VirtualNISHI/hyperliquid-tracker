@@ -1,0 +1,23 @@
+# Hyperliquid Daily Snapshot — bot configuration
+# polymarket-BOT テンプレ由来の不要セクション (watchlist_builder, tracker, convergence, refresh_pnl)
+# は config.py が ignore して default を使うので残しても害はないが、ここでは省略。
+
+daily_snapshot:
+  # Polymarket 由来のフィールド名(image renderer/job が共通で読む)
+  fetch_limit: 200            # 未使用 (Hyperliquid は1API call で全 perp)
+  min_volume_24h_usd: 1000000 # OI 最低額(意味は再利用)
+  movers_count: 5             # = top_oi_count
+  crypto_count: 5             # = top_volume_count
+  macro_count: 5              # = funding_count
+  politics_count: 0
+  excluded_tag_slugs: []
+  category_map: {}
+  display_aliases: {}
+  label_max_chars: 12         # ticker は短い
+  discord_color: 0x00B7C7     # cyan
+  enable_discord: true
+  enable_x: true
+  enable_jp_translation: true
+  jp_translation_provider: "gemini"
+  jp_translation_model: "gemini-2.5-flash-lite"
+  image_mode: true
