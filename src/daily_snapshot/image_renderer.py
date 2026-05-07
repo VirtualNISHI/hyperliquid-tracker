@@ -32,7 +32,8 @@ from .collector import SnapshotRow
 
 log = logging.getLogger(__name__)
 
-W, H = 1200, 900
+W, H_NO_SUMMARY = 1200, 900
+H_WITH_SUMMARY = 1020  # Gemini summary を載せる時はこちら
 PAD = 50
 
 # Dark palette
@@ -136,6 +137,7 @@ def render_snapshot_png(
     universe_size: int,
     market_summary_jp: str = "",
 ) -> bytes:
+    H = H_WITH_SUMMARY if market_summary_jp.strip() else H_NO_SUMMARY
     img = Image.new("RGB", (W, H), BG)
     draw = ImageDraw.Draw(img)
 
