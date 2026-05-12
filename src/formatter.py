@@ -18,6 +18,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from .nansen_client import ATTRIBUTION_FOOTER_PLAIN
+
 SMART_MONEY_COLOR = 0x9B59B6  # SPEC §5.1 — purple, individual trades
 CONVERGENCE_COLOR = 0xE74C3C  # SPEC §5.2 — red, multi-wallet convergence
 
@@ -94,6 +96,51 @@ class TradeNotification:
     amount_usd: float
     entry_price: float | None
     wallet: WalletStats
+    # Optional Nansen-sourced enrichment (FREE / ATTRIBUTION tier only).
+    # When present, an "On-chain context" field is added to the embed and the
+    # Nansen attribution footer is set, per Nansen redistribution policy.
+    nansen_context: dict[str, Any] | None = None
+
+
+def _signed_usd(val: float | int | None) -> str:
+    if val is None:
+        return "—"
+    v = float(val)
+    return f"{'-' if v < 0 else ''}${abs(v):,.0f}"
+
+
+def _format_nansen_context_value(ctx: dict[str, Any]) -> str | None:
+    """Render Nansen on-chain context as a multiline embed field.
+
+    Only uses FREE/ATTRIBUTION tier data (address pnl-summary, balances,
+    prediction-market address-summary). NEVER includes entity labels or
+    smart-money classifications per Nansen ToS.
+    """
+    lines: list[str] = []
+    pnl = ctx.get("onchain_pnl_usd")
+    wr = ctx.get("onchain_win_rate")
+    tc = ctx.get("onchain_trade_count")
+    lookback = ctx.get("lookback_days") or 0
+    if pnl is not None and tc:
+        wr_str = f", win {float(wr):.0%}" if wr is not None else ""
+        lines.append(
+            f"On-chain ({int(lookback)}d): **{_signed_usd(pnl)}**{wr_str} across {int(tc)} sales"
+        )
+    pf = ctx.get("portfolio_value_usd")
+    if pf:
+        lines.append(f"Portfolio (top tokens): **${float(pf):,.0f}**")
+    pm_pnl = ctx.get("pm_total_pnl_usd")
+    pm_mkts = ctx.get("pm_markets_traded") or 0
+    pm_wr = ctx.get("pm_win_rate")
+    if pm_pnl is not None and pm_mkts:
+        wr_str = f", win {float(pm_wr):.0%}" if pm_wr is not None else ""
+        lines.append(
+            f"Polymarket lifetime: **{_signed_usd(pm_pnl)}**{wr_str} across {int(pm_mkts)} markets"
+        )
+    age = ctx.get("pm_wallet_age_days")
+    if age:
+        lines.append(f"Wallet age: {int(age)} days")
+    return "\n".join(lines) if lines else None
 
 
 def format_trade_embed(t: TradeNotification) -> dict[str, Any]:
@@ -132,6 +179,17 @@ def format_trade_embed(t: TradeNotification) -> dict[str, Any]:
             "value": str(t.wallet.market_appearances),
             "inline": True,
         },
+    ]
+
+    nansen_field: str | None = None
+    if t.nansen_context:
+        nansen_field = _format_nansen_context_value(t.nansen_context)
+        if nansen_field:
+            fields.append(
+                {"name": "On-chain context", "value": nansen_field, "inline": False}
+            )
+
+    fields.append(
         {
             "name": ZWS,
             "value": (
@@ -139,15 +197,21 @@ def format_trade_embed(t: TradeNotification) -> dict[str, Any]:
                 f"[View Wallet]({nansen_wallet_url(t.wallet.address)})"
             ),
             "inline": False,
-        },
-    ]
-    return {
+        }
+    )
+
+    embed: dict[str, Any] = {
         "title": "🎯 Smart Money Trade",
         "url": url,
         "description": f"**{t.market_question}**" if t.market_question else None,
         "color": SMART_MONEY_COLOR,
         "fields": fields,
     }
+    # Add Nansen attribution footer when on-chain context is shown,
+    # per Nansen redistribution policy for ATTRIBUTION-tier data.
+    if nansen_field:
+        embed["footer"] = {"text": ATTRIBUTION_FOOTER_PLAIN}
+    return embed
 
 
 @dataclass

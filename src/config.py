@@ -114,6 +114,8 @@ class Settings:
     x_access_secret: str
     anthropic_api_key: str
     gemini_api_key: str
+    nansen_api_key: str
+    nansen_pnl_lookback_days: int
     log_level: str
     db_path: Path
     dry_run: bool
@@ -237,6 +239,8 @@ def load_settings(
         x_access_secret=os.getenv("X_ACCESS_SECRET", ""),
         anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
         gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
+        nansen_api_key=os.getenv("NANSEN_API_KEY", ""),
+        nansen_pnl_lookback_days=int(os.getenv("NANSEN_PNL_LOOKBACK_DAYS", "180")),
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         db_path=db_path,
         dry_run=os.getenv("DRY_RUN", "false").lower() in {"1", "true", "yes"},

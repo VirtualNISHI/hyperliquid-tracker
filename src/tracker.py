@@ -17,6 +17,7 @@ from .config import Settings
 from .db import connect, transaction
 from .discord_client import DiscordClient
 from .formatter import TradeNotification, WalletStats, format_trade_embed
+from .nansen_client import NansenClient
 from .polymarket_client import PolymarketClient
 
 log = logging.getLogger(__name__)
@@ -261,7 +262,9 @@ def mark_notified(conn: sqlite3.Connection, trade_id: str) -> None:
 
 
 def _build_notification(
-    trade: dict[str, Any], wl: WatchlistRow
+    trade: dict[str, Any],
+    wl: WatchlistRow,
+    nansen_context: dict[str, Any] | None = None,
 ) -> TradeNotification:
     return TradeNotification(
         market_id=_trade_market_id(trade) or "",
@@ -277,7 +280,57 @@ def _build_notification(
             win_rate=wl.win_rate,
             market_appearances=wl.market_appearances,
         ),
+        nansen_context=nansen_context,
     )
+
+
+# Single-run cache keyed by wallet address — avoids repeat Nansen calls
+# for wallets that have multiple new trades in the same poll cycle.
+_nansen_run_cache: dict[str, dict[str, Any] | None] = {}
+
+
+def _fetch_nansen_context(
+    nansen: NansenClient, address: str, *, lookback_days: int
+) -> dict[str, Any] | None:
+    """Best-effort Nansen enrichment. Returns None on failure / disabled.
+
+    ToS notes: this function only consumes FREE/ATTRIBUTION-tier endpoints
+    (no smart-money labels, no leaderboards). Callers must show the
+    "Powered by Nansen" attribution when the returned dict is rendered.
+    """
+    if not nansen.enabled:
+        return None
+    if address in _nansen_run_cache:
+        return _nansen_run_cache[address]
+    date_to = datetime.now(timezone.utc).date()
+    date_from = date_to - timedelta(days=lookback_days)
+    pnl = nansen.address_pnl_summary(
+        address,
+        chain="ethereum",
+        date_from=date_from.isoformat(),
+        date_to=date_to.isoformat(),
+    )
+    pm_summary = nansen.prediction_market_address_summary(address)
+    bal = nansen.address_current_balance(address, chain="ethereum", per_page=10)
+    if not (pnl or pm_summary or bal):
+        _nansen_run_cache[address] = None
+        return None
+    portfolio_usd: float | None = None
+    if bal and bal.get("data"):
+        portfolio_usd = sum(float(it.get("value_usd") or 0.0) for it in bal["data"])
+    ctx = {
+        "onchain_pnl_usd": (pnl or {}).get("realized_pnl_usd"),
+        "onchain_win_rate": (pnl or {}).get("win_rate"),
+        "onchain_trade_count": (pnl or {}).get("traded_times"),
+        "pm_total_pnl_usd": (pm_summary or {}).get("total_pnl_usd"),
+        "pm_win_rate": (pm_summary or {}).get("win_rate"),
+        "pm_markets_traded": (pm_summary or {}).get("markets_traded"),
+        "pm_wallet_age_days": (pm_summary or {}).get("wallet_age_days"),
+        "portfolio_value_usd": portfolio_usd,
+        "lookback_days": lookback_days,
+    }
+    _nansen_run_cache[address] = ctx
+    return ctx
 
 
 def poll_wallet(
@@ -286,6 +339,7 @@ def poll_wallet(
     discord: DiscordClient,
     wl: WatchlistRow,
     settings: Settings,
+    nansen_client: NansenClient | None = None,
 ) -> int:
     """Poll one wallet. Returns the number of new trades detected."""
     last_at, last_id = get_last_seen(conn, wl.wallet_address)
@@ -322,8 +376,19 @@ def poll_wallet(
             ):
                 continue
 
+            ns_ctx: dict[str, Any] | None = None
+            if nansen_client is not None:
+                ns_ctx = _fetch_nansen_context(
+                    nansen_client,
+                    wl.wallet_address,
+                    lookback_days=settings.nansen_pnl_lookback_days,
+                )
             try:
-                discord.send(embeds=[format_trade_embed(_build_notification(t, wl))])
+                discord.send(
+                    embeds=[
+                        format_trade_embed(_build_notification(t, wl, ns_ctx))
+                    ]
+                )
                 tid = _trade_id(t)
                 if tid:
                     mark_notified(conn, tid)
@@ -356,10 +421,17 @@ def run_tracker(settings: Settings) -> int:
             log.warning("watchlist is empty — run scripts/build_watchlist.py first")
             return 0
 
-        with PolymarketClient(user_agent=settings.polymarket_user_agent) as nansen, \
-             DiscordClient(settings.discord_webhook_url, dry_run=settings.dry_run) as discord:
-            for wl in watchlist:
-                total += poll_wallet(conn, nansen, discord, wl, settings)
+        nansen_client = NansenClient(api_key=settings.nansen_api_key)
+        try:
+            with PolymarketClient(user_agent=settings.polymarket_user_agent) as nansen, \
+                 DiscordClient(settings.discord_webhook_url, dry_run=settings.dry_run) as discord:
+                for wl in watchlist:
+                    total += poll_wallet(
+                        conn, nansen, discord, wl, settings,
+                        nansen_client=nansen_client,
+                    )
+        finally:
+            nansen_client.close()
     finally:
         conn.close()
     log.info("tracker run: %d new trades across %d wallets", total, len(watchlist) if watchlist else 0)
