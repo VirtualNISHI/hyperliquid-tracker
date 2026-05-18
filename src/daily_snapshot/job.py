@@ -43,9 +43,13 @@ def run(settings: Settings | None = None) -> None:
         len(top_oi), len(top_vol), len(funding), len(perps),
     )
 
-    # Optional Gemini Japanese summary
+    # Optional Japanese summary via jp_translator (Gemini -> OpenAI -> Grok).
+    # We gate only on enable_jp_translation here; jp_translator itself reads
+    # API keys from env and silently skips providers with no key, so as long
+    # as any one of {GEMINI_API_KEY, OPENAI_API_KEY, XAI_API_KEY} is set the
+    # chain will produce output. All-empty → returns "" and we just omit the band.
     summary = ""
-    if cfg.enable_jp_translation and settings.gemini_api_key:
+    if cfg.enable_jp_translation:
         summary = generate_summary_jp(
             top_oi=top_oi,
             top_vol=top_vol,

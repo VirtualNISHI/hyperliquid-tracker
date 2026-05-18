@@ -55,7 +55,13 @@ jobs:
           X_API_SECRET: ${{ secrets.X_API_SECRET }}
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
           X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+          # LLM (jp_translator) — Gemini -> OpenAI -> Grok fallback chain for
+          # the daily market summary. Any one key is enough; missing keys are
+          # silently skipped. All-empty -> summary band is omitted.
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          DEEPL_API_KEY: ${{ secrets.DEEPL_API_KEY }}
           LOG_LEVEL: INFO
           PYTHONIOENCODING: utf-8
           DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
