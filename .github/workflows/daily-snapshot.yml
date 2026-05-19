@@ -13,6 +13,10 @@ on:
         description: 'Skip actual Discord/X posts (preview only)'
         type: boolean
         default: false
+      disable_gemini:
+        description: 'Force-skip Gemini so jp_translator falls through to OpenAI/Grok. Fallback testing only.'
+        type: boolean
+        default: false
 
 concurrency:
   group: daily-snapshot
@@ -58,7 +62,9 @@ jobs:
           # LLM (jp_translator) — Gemini -> OpenAI -> Grok fallback chain for
           # the daily market summary. Any one key is enough; missing keys are
           # silently skipped. All-empty -> summary band is omitted.
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # If disable_gemini=true on manual dispatch, blank GEMINI_API_KEY so
+          # jp_translator falls through to OpenAI/Grok (fallback path testing).
+          GEMINI_API_KEY: ${{ (github.event_name == 'workflow_dispatch' && inputs.disable_gemini) && '' || secrets.GEMINI_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           DEEPL_API_KEY: ${{ secrets.DEEPL_API_KEY }}
