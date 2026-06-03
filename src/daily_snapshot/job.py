@@ -75,21 +75,58 @@ def run(settings: Settings | None = None) -> None:
             log.warning("image render failed: %s — proceeding without", e)
             image_bytes = None
 
-    # Caption (X tweet body / Discord fallback text)
+    # Caption (X tweet body / Discord fallback text).
+    #
+    # X enforces a 280 *weighted* character limit where every non-ASCII
+    # code point (CJK, emoji, etc.) counts as 2. The previous ``len(caption)``
+    # check counted code points only — a 130-codepoint Japanese summary
+    # could comfortably pass ``len < 280`` while actually being 260+ weighted
+    # plus the attached t.co media URL (+23 weighted), causing X to silently
+    # truncate the tweet mid-sentence (e.g. "…約6" cut at codepoint ~50).
+    #
+    # We now budget on weighted chars and trim the JP summary itself if it
+    # would push the caption past the budget, leaving the header + hashtags
+    # intact and adding a "…" suffix so readers know it's truncated.
     date_short = f"{now.month}/{now.day:02d}"
+    header = f"📊 Hyperliquid Daily Snapshot {date_short} JST"
+    hashtags = "#Hyperliquid #Perp #DeFi"
+    # X auto-adds the media URL (~23 weighted) to the count even though it's
+    # not in our string. Reserve 25 to be safe.
+    X_WEIGHTED_LIMIT = 280
+    MEDIA_URL_RESERVE = 25 if image_bytes else 0
+
+    def _weighted_len(s: str) -> int:
+        return sum(2 if ord(c) > 0x7f else 1 for c in s)
+
+    def _trim_summary(text: str, budget: int) -> str:
+        """Trim text so that _weighted_len(text + '…') <= budget."""
+        if _weighted_len(text) <= budget:
+            return text
+        out_chars: list[str] = []
+        used = 0
+        ellipsis = "…"  # 2 weighted
+        room = budget - _weighted_len(ellipsis)
+        for ch in text:
+            w = 2 if ord(ch) > 0x7f else 1
+            if used + w > room:
+                break
+            out_chars.append(ch)
+            used += w
+        # Trailing punctuation/whitespace looks better stripped before "…"
+        return "".join(out_chars).rstrip("、。, .\n") + ellipsis
+
     if summary:
-        caption = (
-            f"📊 Hyperliquid Daily Snapshot {date_short} JST\n"
-            f"\n{summary}\n"
-            f"\n#Hyperliquid #Perp #DeFi"
-        )
+        # Caption = header + "\n\n" + summary + "\n\n" + hashtags
+        fixed = "\n\n\n\n"  # 4 newlines glue, weighted 4
+        scaffold = _weighted_len(header) + _weighted_len(fixed) + _weighted_len(hashtags)
+        summary_budget = X_WEIGHTED_LIMIT - MEDIA_URL_RESERVE - scaffold
+        trimmed = _trim_summary(summary, max(summary_budget, 0))
+        caption = f"{header}\n\n{trimmed}\n\n{hashtags}"
     else:
-        caption = (
-            f"📊 Hyperliquid Daily Snapshot {date_short} JST\n"
-            "#Hyperliquid #Perp #DeFi"
-        )
-    if len(caption) > 280:
-        caption = caption[:277] + "..."
+        caption = f"{header}\n{hashtags}"
+
+    log.info("caption weighted=%d (limit %d, media reserve %d)",
+             _weighted_len(caption), X_WEIGHTED_LIMIT, MEDIA_URL_RESERVE)
 
     # Discord
     if cfg.enable_discord:
