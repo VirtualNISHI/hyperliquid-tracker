@@ -23,7 +23,8 @@ log = logging.getLogger(__name__)
 SYSTEM_PROMPT = """\
 あなたは仮想通貨デリバティブ市場の解説者です。
 入力は Hyperliquid 永続スワップ市場の今日のスナップショットです。
-日本語で1〜2文(最大120字)、市場の特徴を簡潔に解説してください。
+日本語で1〜2文(最大100字)、市場の特徴を簡潔に解説してください。
+- 必ず句点(。)で完結した完全な文を返す。途中で切れた文は禁止。
 - ティッカー(BTC, ETH 等)はそのまま
 - 数字を盛り込む
 - 「〜です」「〜となっている」等の自然な日本語
@@ -71,10 +72,17 @@ def generate_summary_jp(
 ) -> str:
     """Return a 1-line JP summary, or "" on all-provider failure.
 
-    Fallback: Gemini → OpenAI → Grok (jp_translator chain).
+    Fallback chain (shared jp_translator package): Gemini → OpenAI → Grok.
 
     The legacy ``api_key=`` kwarg is treated as the Gemini key so existing
     callers (``job.py``) keep working without modification.
+
+    The actual Gemini model used is whatever ``JP_TRANSLATOR_GEMINI_MODEL``
+    is set to (defaults to ``gemini-2.5-flash-lite``). Avoid Gemini 2.5
+    "thinking" models (``gemini-2.5-flash``, ``gemini-2.5-pro``) here —
+    they reliably eat most of max_output_tokens on hidden reasoning and
+    leave the visible text cut mid-sentence (e.g. "…約7"). Non-thinking
+    models (2.0-flash, 2.5-flash-lite) produce complete sentences.
     """
     # Backward compat: old call sites pass api_key= as the Gemini key.
     if api_key and not gemini_api_key:

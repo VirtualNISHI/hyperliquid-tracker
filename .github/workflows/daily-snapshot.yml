@@ -67,6 +67,12 @@ jobs:
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           DEEPL_API_KEY: ${{ secrets.DEEPL_API_KEY }}
           DISABLE_GEMINI: ${{ github.event_name == 'workflow_dispatch' && inputs.disable_gemini && 'true' || 'false' }}
+          # Pin the Gemini model to 2.0-flash (no thinking mode). 2.5-flash and
+          # 2.5-pro consume max_output_tokens on hidden reasoning and emit
+          # only ~25 visible chars cut mid-sentence (observed on multiple
+          # daily runs e.g. tweet id 2061987470900682768 "…約7〜1"). 2.0-flash
+          # has no thinking and reliably returns the full 1-2 sentence summary.
+          JP_TRANSLATOR_GEMINI_MODEL: gemini-2.0-flash
           LOG_LEVEL: INFO
           PYTHONIOENCODING: utf-8
           DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
